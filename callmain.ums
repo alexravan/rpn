@@ -1,0 +1,24 @@
+# callmain.ums -- calls our main function
+# 
+# Maxwell Bennett (mbenne06) and Alexander Ravan (aravan01)
+# December 8, 2014
+# 
+# Register Usage:
+#    r0: .zero
+#    r1: non-volatile
+#    r2: stack pointer
+#    r3: non-volatile
+#    r4: return address from main, volatile
+#    r5: temporary
+#    r6: temporary
+#    r7: temporary
+
+        .section init
+        .temps r5, r6, r7
+        .zero r0
+_ustart:
+        r2 := endstack
+        
+        goto main linking r1
+
+        halt

@@ -1,0 +1,30 @@
+# main.ums
+# 
+# Maxwell Bennett (mbenne06) and Alexander Ravan (aravan01)
+# December 8, 2014
+# 
+# Register Usage:
+#    r0: .zero
+#    r1: non-volatile
+#    r2: stack pointer
+#    r3: non-volatile
+#    r4: return address from main, volatile
+#    r5: temporary
+#    r6: temporary
+#    r7: temporary
+
+     .zero r0
+     .temps r5, r6,r7
+
+ main:
+     push r1 on stack r2                   # Address main returns to
+
+     push r3 on stack r2                    # Callee saves non-volatile reg
+
+     goto waiting
+
+     mainFinish:
+          pop r3 off stack r2                    # restore caller's r3
+          pop r4 off stack r2                    # get return address
+          r1 := 0                                # EXIT_SUCCESS is the result
+          goto r4

@@ -1,0 +1,342 @@
+# jump.ums -- Initialization of jump table and operation definitions
+# 
+# Maxwell Bennett (mbenne06) and Alexander Ravan (aravan01)
+# December 8, 2014
+# 
+# Register Useage:
+# 	r0: .zero
+#       r1: non-volatile and return address for check1 and check2
+# 	r2: stack pointer
+#       r3: non-volatile and 2nd stack pointer for printing stack
+#       r4: volatile 
+#       r5: temporary
+# 	r6: temporary
+# 	r7: temporary
+
+	.section init
+	.zero r0
+	.temps r5, r6, r7
+	
+	r1 := 0
+initializeJump:
+	r4 := jumptable + r1
+	m[r0][r4] := inputerror
+	r1 := r1 + 1
+	if (r1 <s 256) goto initializeJump
+
+	# initialize each digit of jump table to digit label
+	r1 := 48
+digitloop:
+	r4 := jumptable + r1
+	m[r0][r4] := digit
+	r1 := r1 + 1
+	if (r1 <s 58) goto digitloop
+
+	m[r0][jumptable + ' '] := space # space
+	m[r0][jumptable + '\n'] := newline # newline will go here
+	m[r0][jumptable + '+'] := add # addition
+	m[r0][jumptable + '-'] := sub # subtract
+	m[r0][jumptable + '*'] := mul # multiply
+	m[r0][jumptable + '/'] := div # divide
+	m[r0][jumptable + '|'] := or # or
+	m[r0][jumptable + '&'] := and # and
+	m[r0][jumptable + 'c'] := signchange # sign change
+	m[r0][jumptable + '~'] := bitwisecomp # bitwise complement
+	m[r0][jumptable + 's'] := swap # swap
+	m[r0][jumptable + 'd'] := duplicate # duplciate
+	m[r0][jumptable + 'p'] := discard # discard
+	m[r0][jumptable + 'z'] := zerostack # zero stack
+
+
+
+	.section rodata
+	.zero r0
+	.temps r5, r6, r7
+
+jumptable:
+        .space 256
+
+# If not at least one number on stack, will output error and goto waiting
+# Otherwise returns to address in r1
+check1:
+        if (r2 <s endstack - 2) goto validCheck1Input
+        
+        output "Stack underflow---expected at least 1 element\n"
+        goto waiting
+
+        validCheck1Input:
+                goto r1
+
+# If not at least two numbers on stack, will output error and goto waiting
+# Otherwise returns to address in r1
+check2:
+        if (r2 <s endstack - 3) goto validCheck2Input
+
+        output "Stack underflow---expected at least 2 elements\n"
+        goto waiting
+        
+        validCheck2Input:
+                goto r1
+
+# Stores top value in stack in r4, which must be an ASCII value from '0'-'9'
+digit:
+        pop r4 off stack r2
+        r4 := r4 - '0'
+        push r4 on stack r2 
+
+        goto entering  
+
+# If input value is not a digit or operator, prints error, goes to waiting
+inputerror:
+        pop r4 off stack r2 # get rid of unknown character
+        output "Unknown character '"
+        output r4 
+        output "'\n"
+        goto waiting
+        
+        .section rodata
+
+space:
+        pop stack r2 # get rid of space
+        goto waiting
+
+# Uses r3 as a second pointer to indicate which value in stack needs to be 
+# printed, then uses r2 to push temporary printing values to top of stack w/o
+# changing the original values on stack
+newline:
+        pop stack r2
+        r3 := r2
+        r3 := r3 - 1
+        newlineBaseCase:
+                r3 := r3 + 1
+                if (r3 >=s endstack - 2) goto donePrinting
+
+                output ">>> "
+
+                goto printd 
+
+        donePrinting:
+                goto waiting
+
+# Called when the r3 does not point to the bottom of the stack
+printd: 
+        .temps r5, r6, r7
+
+        pop r4 off stack r3
+        push r4 on stack r3 
+        push -1 on stack r2 # Push sentinel on top of stack
+        push r4 on stack r2 # Push value on top of stack
+
+        # stack is now: [ currNumToPrint | ... | -1 | currNumToPrint
+        # where "..." is either nothing (if r2 == r3) or is the other numbers
+        # that have been printed off of the stack.
+
+        if (r4 <s 0) goto printNegative
+        # Prints val of r4 in decimal and finishes if next val on stack is -1
+        basecase:
+                if (r4 >=s 10) goto printloop
+                pop r4 off stack r2
+                output r4 + '0'
+                pop r4 off stack r2
+                if (r4 == -1) goto finishPrint
+                push r4 on stack r2
+                goto basecase
+        
+        # Takes a value >= 10, pushes its lowest order digit onto top of stack 
+        # then pushes the (value / 10) onto top of stack
+        printloop:
+                .temps r6, r7
+                pop r5 off stack r2
+                r4 := r5 / 10
+                r1 := r4 * 10
+                r4 := r5 - r1
+                r1 := r1 / 10
+                .temps r5, r6, r7
+                push r4 on stack r2
+                push r1 on stack r2
+                r4 := r1
+                goto basecase
+        
+        # If r4 is negative, prints a '-' and makes it positive for printing
+        # (doesn't change original value on stack, only on top of stack) 
+        printNegative:
+                output '-'
+                pop r4 off stack r2
+                r4 := -r4
+                push r4 on stack r2
+                goto basecase
+
+        finishPrint:
+                output '\n'
+                goto newlineBaseCase
+
+# Divisor comes in r4, Dividend comes in r1. Handles cases of same sign, diff
+# sign, and the case where the divisor is zero.
+div:    
+        pop stack r2 # Pop off '/'
+        goto check2 linking r1
+
+        pop r4 off stack r2 # Pop divisor
+        pop r1 off stack r2 # Pop dividend
+
+        if (r4 == 0) goto divZero
+
+        if (r4 <s 0) goto bothNegCheck # Check if both Negative
+        if (r1 >=s 0) goto divide # Both are positive Integers
+        r1 := -r1
+        goto diffSigns # One negative, one positive
+
+        divide: # Always divides values of same sign
+                r4 := r1 / r4
+                push r4 on stack r2
+                goto waiting
+
+        bothNegCheck:
+                r4 := -r4
+                if (r1 <s 0) goto bothNeg 
+                goto diffSigns
+
+        bothNeg: # r4 is already positive, must make r1 positive too
+                r1 := -r1
+                goto divide
+
+        diffSigns: # Both values come in positive, negative added after division
+                r4 := r1 / r4
+                r4 := -r4
+                push r4 on stack r2
+                goto waiting
+
+        divZero:
+                output "Division by zero\n"
+                push r1 on stack r2
+                push r4 on stack r2
+                goto waiting
+
+############################## Simple Operations ##############################
+# The below operations perform in the same fashion:
+#	First remove operator from stack
+#	Check to see if there are enough values on stack to perform that 
+#		operation, using r1 as the checking function's return address
+#	Then perform simple macro operation (should be clear in code)
+#	Finally, pushing result on stack (if necessary), then goto waiting
+###############################################################################
+add:
+        pop stack r2
+        goto check2 linking r1
+
+        pop r4 off stack r2
+        pop r1 off stack r2
+
+        r4 := r4 + r1
+        push r4 on stack r2
+
+        goto waiting
+sub:
+        pop stack r2
+        goto check2 linking r1
+
+        pop r4 off stack r2
+        pop r1 off stack r2
+        
+        r4 := r1 - r4
+        push r4 on stack r2
+
+        goto waiting
+
+mul:
+        pop stack r2
+        goto check2 linking r1
+
+        pop r4 off stack r2
+        pop r1 off stack r2
+        
+        r4 := r1 * r4
+        push r4 on stack r2
+
+        goto waiting
+
+or:
+        pop stack r2
+        goto check2 linking r1
+
+        pop r4 off stack r2
+        pop r1 off stack r2
+        
+        r4 := r1 | r4
+        push r4 on stack r2
+
+        goto waiting
+
+and:
+        pop stack r2
+        goto check2 linking r1
+
+        pop r4 off stack r2
+        pop r1 off stack r2
+        
+        r4 := r1 & r4
+        push r4 on stack r2
+
+        goto waiting
+
+signchange:
+        pop stack r2
+        goto check1 linking r1
+
+        pop r4 off stack r2
+
+        r4 := -r4
+        push r4 on stack r2
+
+        goto waiting
+
+bitwisecomp:
+        pop stack r2
+        goto check1 linking r1
+
+        pop r4 off stack r2
+
+        r4 := ~r4
+        push r4 on stack r2
+
+        goto waiting
+
+swap:
+        pop stack r2
+        goto check2 linking r1
+
+        pop r4 off stack r2
+        pop r1 off stack r2
+        
+        push r4 on stack r2
+        push r1 on stack r2
+
+        goto waiting
+
+duplicate:
+        pop stack r2
+        goto check1 linking r1
+
+        pop r4 off stack r2
+        push r4 on stack r2
+        push r4 on stack r2
+
+        goto waiting
+
+discard:
+        pop stack r2
+        goto check1 linking r1
+
+        pop stack r2
+
+        goto waiting
+
+# Differs slightly from above contract: does not check values, just pops all off
+zerostack:
+        pop stack r2
+
+        zeroBasecase:
+                if (r2 == endstack - 2) goto waiting
+
+                pop stack r2
+                goto zeroBasecase
